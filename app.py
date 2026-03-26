@@ -27,11 +27,34 @@ CORS(app)
 
 _engine = None
 
+def _index_is_stale() -> bool:
+    """
+    Comprueba si el índice existe pero es más antiguo que los archivos
+    de código fuente (ingest.py, rag.py). Si es así, hay que reconstruirlo
+    para que los nuevos datos y la lógica actualizada tengan efecto.
+    """
+    index_path = Path("data/football.index")
+    if not index_path.exists():
+        return False   # no existe → se construirá por primera vez
+    index_mtime = index_path.stat().st_mtime
+    src_files = [
+        Path("src/ingest.py"),
+        Path("src/rag.py"),
+        Path("src/indexer.py"),
+    ]
+    for f in src_files:
+        if f.exists() and f.stat().st_mtime > index_mtime:
+            log.info(f"Índice desactualizado: {f.name} es más nuevo que el índice")
+            return True
+    return False
+
+
 def get_engine():
     global _engine
     if _engine is None:
-        if not Path("data/football.index").exists():
-            log.info("Índice no encontrado, construyendo automáticamente...")
+        index_path = Path("data/football.index")
+        if not index_path.exists() or _index_is_stale():
+            log.info("Construyendo índice (primera vez o código actualizado)...")
             docs = run_ingestion(use_live=False)
             run_indexing(docs)
         _engine = get_rag_engine()

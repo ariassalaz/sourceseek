@@ -93,6 +93,56 @@ def expand_query(query: str) -> str:
     return query
 
 
+# ── Puntuación de relevancia de entidad en un chunk ─────────────────────────
+
+def _chunk_entity_score(chunk: dict, entity_lower: str,
+                         entity_parts: list[str]) -> float:
+    """
+    Devuelve un score 0-1 que indica cuánto trata el chunk SOBRE la entidad.
+    Criterios (orden de peso):
+      1.0 — el campo 'entity' del chunk coincide exactamente
+      0.9 — la entidad aparece en los primeros 150 chars (es el sujeto)
+      0.7 — la entidad aparece ≥ 3 veces en el texto
+      0.5 — la entidad aparece ≥ 2 veces
+      0.3 — solo aparece 1 vez (mención de pasada)
+      0.0 — no aparece
+    """
+    chunk_entity = chunk.get("entity", "").lower()
+    text         = chunk.get("text", "")
+    text_lower   = text.lower()
+
+    # Coincidencia exacta en metadata
+    if entity_lower == chunk_entity or (
+        entity_parts and all(p in chunk_entity for p in entity_parts)
+    ):
+        return 1.0
+
+    # Contar menciones en el texto
+    count = text_lower.count(entity_lower)
+    if count == 0 and entity_parts:
+        # Contar por partes (apellido, etc.)
+        count = min(text_lower.count(p) for p in entity_parts if p)
+
+    if count == 0:
+        return 0.0
+
+    # Aparece en los primeros 150 caracteres → es el sujeto del chunk
+    if entity_lower in text_lower[:150] or (
+        entity_parts and any(p in text_lower[:150] for p in entity_parts)
+    ):
+        return 0.9
+
+    if count >= 3:
+        return 0.7
+    if count >= 2:
+        return 0.5
+    return 0.3   # mención única → solo de pasada
+
+
+# Umbral mínimo de score de entidad para incluir un chunk en resultados
+_ENTITY_THRESHOLD = 0.5   # ≥ 2 menciones o aparece en primeros 150 chars
+
+
 # ── Detección de entidad específica ─────────────────────────────────────────
 _ENTITY_STOPWORDS = {
     'quien', 'quién', 'qué', 'que', 'cómo', 'como', 'cuándo', 'cuando',
@@ -229,7 +279,7 @@ class HybridRetriever:
             b    = float(bm25_norm[idx]) if idx < len(bm25_norm) else 0.0
             scored[idx] = (rrf, v, b)
 
-        # ── Re-ranking por entidad específica ──────────────────────────────
+        # ── Re-ranking por entidad con score de densidad ───────────────────
         if entity:
             entity_lower = entity.lower()
             entity_parts = [p for p in entity_lower.split() if len(p) > 3]
@@ -237,18 +287,17 @@ class HybridRetriever:
             for idx, (rrf, v, b) in scored.items():
                 if idx < 0 or idx >= len(self.chunks):
                     continue
-                chunk_text   = self.chunks[idx].get("text", "").lower()
-                chunk_entity = self.chunks[idx].get("entity", "").lower()
-
-                if entity_lower in chunk_text or entity_lower in chunk_entity:
-                    factor = 1.6   # coincidencia exacta
-                elif entity_parts and (
-                    any(p in chunk_text   for p in entity_parts) or
-                    any(p in chunk_entity for p in entity_parts)
-                ):
-                    factor = 1.25  # coincidencia parcial (apellido)
+                es = _chunk_entity_score(self.chunks[idx], entity_lower, entity_parts)
+                if es >= 0.9:
+                    factor = 2.0   # sujeto del chunk
+                elif es >= 0.7:
+                    factor = 1.5   # mencionado varias veces
+                elif es >= 0.5:
+                    factor = 1.1   # mencionado 2 veces
+                elif es >= 0.3:
+                    factor = 0.4   # mención única → penalizar
                 else:
-                    factor = 0.55  # sin relación: penalización
+                    factor = 0.1   # no aparece → casi eliminar
                 boosted[idx] = (rrf * factor, v, b)
             scored = boosted
 
@@ -316,14 +365,26 @@ Responde SIEMPRE en base al contexto proporcionado.
 """
 
 def build_prompt(query: str, chunks: list[dict]) -> str:
+    entity = _extract_entity_name(query)
+
+    # Restricción extra cuando hay una entidad específica detectada
+    entity_constraint = ""
+    if entity:
+        entity_constraint = (
+            f"\n⚠️ IMPORTANTE: La pregunta es ESPECÍFICAMENTE sobre '{entity}'. "
+            f"Responde ÚNICAMENTE con información sobre '{entity}'. "
+            f"NO menciones a otras personas, clubes o eventos salvo que sean "
+            f"directamente parte de la historia de '{entity}'.\n"
+        )
+
     parts = []
     for i, c in enumerate(chunks, 1):
         src = c.get("url", "?")
         source_type = c.get("source", "")
         parts.append(f"[Fuente {i} | {source_type} | {src}]\n{c['text']}")
     ctx = "\n\n---\n\n".join(parts)
-    return f"""{SYSTEM_PROMPT}
 
+    return f"""{SYSTEM_PROMPT}{entity_constraint}
 ### Contexto recuperado:
 {ctx}
 
@@ -349,32 +410,34 @@ def generate_with_ollama(prompt: str) -> Optional[str]:
 
 def generate_direct(query: str, chunks: list[dict]) -> str:
     """
-    Respuesta directa desde los chunks cuando no hay LLM.
-    Filtra por entidad específica para evitar deriva temática.
+    Respuesta directa sin LLM.
+    Solo usa chunks donde la entidad es claramente el sujeto (score ≥ 0.5).
     """
     if not chunks:
         return "No se encontró información relevante sobre tu consulta."
 
     entity = _extract_entity_name(query)
-    selected = []
 
     if entity:
         entity_lower = entity.lower()
         entity_parts = [p for p in entity_lower.split() if len(p) > 3]
 
-        # Filtrar chunks que mencionan explícitamente la entidad buscada
-        primary = [c for c in chunks if entity_lower in c["text"].lower()]
-        if not primary and entity_parts:
-            primary = [c for c in chunks
-                       if any(p in c["text"].lower() for p in entity_parts)]
+        # Solo chunks donde la entidad es claramente el tema principal
+        primary = [
+            c for c in chunks
+            if _chunk_entity_score(c, entity_lower, entity_parts) >= _ENTITY_THRESHOLD
+        ]
 
-        if primary:
-            selected = primary[:3]
-        else:
-            # La entidad no aparece en ningún chunk recuperado
-            return (f"No se encontró información específica sobre '{entity}' "
-                    f"en la base de conocimiento de SourceSeek. "
-                    f"Prueba reindexar con /api/rebuild para incluir más fuentes.")
+        if not primary:
+            return (f"No se encontró información específica sobre '{entity}'. "
+                    f"Prueba reindexar con /api/rebuild para ampliar las fuentes.")
+
+        # Ordenar por score de entidad descendente
+        primary.sort(
+            key=lambda c: _chunk_entity_score(c, entity_lower, entity_parts),
+            reverse=True,
+        )
+        selected = primary[:3]
     else:
         selected = chunks[:3]
 
@@ -382,16 +445,15 @@ def generate_direct(query: str, chunks: list[dict]) -> str:
     for c in selected:
         text = c["text"]
         sentences = re.split(r'(?<=[.!?])\s+', text)
-        # Tomar oraciones informativas (>5 palabras)
-        relevant = [s for s in sentences[:8] if len(s.split()) > 5]
-        snippet = " ".join(relevant[:6])
+        relevant = [s for s in sentences[:10] if len(s.split()) > 5]
+        snippet = " ".join(relevant[:7])
         if snippet and len(snippet) > 60:
             if not parts:
                 snippet = re.sub(r'^[^:]+:\s+', '', snippet, count=1)
             parts.append(snippet)
 
     combined = "\n\n".join(parts)
-    return combined if combined else chunks[0]["text"][:1000]
+    return combined if combined else chunks[0]["text"][:1200]
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -421,35 +483,33 @@ class SourceSeekRAG:
         retrieved = self.retriever.retrieve(query, top_k=top_k,
                                             type_filter=type_filter)
 
-        # ── Verificar entidad y activar fallback CC live si no hay match ──
+        # ── Verificar entidad y activar fallback live si no hay match ──────
         entity = _extract_entity_name(query)
         if entity:
             entity_lower = entity.lower()
             entity_parts = [p for p in entity_lower.split() if len(p) > 3]
 
-            def _has_entity_match(chunks: list[dict]) -> bool:
+            def _has_good_match(chunks: list[dict]) -> bool:
+                """True si al menos un chunk habla claramente sobre la entidad."""
                 return any(
-                    entity_lower in c["text"].lower() or
-                    entity_lower in c.get("entity", "").lower() or
-                    (entity_parts and any(p in c["text"].lower() for p in entity_parts))
+                    _chunk_entity_score(c, entity_lower, entity_parts) >= _ENTITY_THRESHOLD
                     for c in chunks
                 )
 
-            if not retrieved or not _has_entity_match(retrieved):
-                # Entidad no en índice → búsqueda en vivo CC
-                log.info(f"Entidad '{entity}' no en índice, activando CC live...")
+            if not retrieved or not _has_good_match(retrieved):
+                log.info(f"Entidad '{entity}' sin match suficiente, activando live search...")
                 try:
                     from cc_live import live_search_cached
                     live_chunks = live_search_cached(entity, max_results=5)
                     if live_chunks:
                         retrieved = live_chunks
                         cc_live_used = True
-                        log.info(f"CC live: {len(live_chunks)} chunks para '{entity}'")
+                        log.info(f"Live search: {len(live_chunks)} chunks para '{entity}'")
                 except Exception as e:
-                    log.warning(f"CC live fallback falló: {e}")
+                    log.warning(f"Live search falló: {e}")
 
-            # Si aún no hay resultados con match, devolver mensaje claro
-            if not retrieved or not _has_entity_match(retrieved):
+            # Si aún no hay resultados buenos, devolver mensaje claro
+            if not retrieved or not _has_good_match(retrieved):
                 return {
                     "query":        query,
                     "answer":       (f"No se encontró información específica sobre '{entity}'. "
@@ -461,11 +521,12 @@ class SourceSeekRAG:
                     "search_ms":    round((time.time() - t0) * 1000),
                 }
 
-            # Filtrar chunks para el LLM: solo los que mencionan la entidad
+            # Para el LLM: solo chunks donde la entidad es el sujeto principal
             if use_llm:
-                llm_chunks = [c for c in retrieved
-                              if entity_lower in c["text"].lower() or
-                              (entity_parts and any(p in c["text"].lower() for p in entity_parts))]
+                llm_chunks = [
+                    c for c in retrieved
+                    if _chunk_entity_score(c, entity_lower, entity_parts) >= _ENTITY_THRESHOLD
+                ]
                 retrieved_for_llm = llm_chunks if llm_chunks else retrieved
             else:
                 retrieved_for_llm = retrieved

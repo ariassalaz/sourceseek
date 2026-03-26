@@ -486,11 +486,81 @@ def fetch_wikipedia_summary(title: str, lang: str = "es") -> Optional[dict]:
         return None
 
 
+def harvest_wikipedia_search(max_per_category: int = 20) -> list[dict]:
+    """
+    Descarga artículos de Wikipedia usando la API de búsqueda dinámica.
+    Busca categorías de fútbol para descubrir artículos no hardcodeados.
+    Esto amplía la cobertura a jugadores, equipos y competencias desconocidas.
+    """
+    SEARCH_QUERIES_ES = [
+        "futbolista mexicano Liga MX", "jugador selección mexicana",
+        "futbolista argentino Premier League", "futbolista colombiano",
+        "futbolista brasileño LaLiga", "futbolista español Bundesliga",
+        "futbolista Liga MX 2024", "entrenador fútbol mexicano",
+        "portero fútbol europeo", "delantero fútbol latinoamericano",
+        "centrocampista Serie A", "defensa Champions League",
+        "goleador Premier League", "fichaje récord fútbol",
+    ]
+    SEARCH_QUERIES_EN = [
+        "Liga MX footballer", "Mexican national football team player",
+        "Premier League top scorer", "La Liga player statistics",
+        "Bundesliga footballer", "Serie A player",
+        "Copa Libertadores footballer", "CONCACAF footballer",
+        "football transfer record", "UEFA Champions League player",
+    ]
+
+    docs   = []
+    seen   = set()
+    titles_seen: set = set()
+
+    def _search_and_fetch(query: str, lang: str):
+        base_search = (
+            f"https://{lang}.wikipedia.org/w/api.php"
+        )
+        try:
+            resp = SESSION.get(base_search, params={
+                "action": "query", "list": "search",
+                "srsearch": query, "srlimit": max_per_category,
+                "format": "json", "utf8": 1,
+            }, timeout=15)
+            resp.raise_for_status()
+            results = resp.json().get("query", {}).get("search", [])
+        except Exception as e:
+            log.debug(f"Wikipedia search error ({query}): {e}")
+            return
+
+        for r in results:
+            title = r.get("title", "")
+            if not title or title in titles_seen:
+                continue
+            titles_seen.add(title)
+            doc = fetch_wikipedia_summary(title, lang=lang)
+            if not doc:
+                continue
+            key = hashlib.md5(doc["text"][:200].encode()).hexdigest()
+            if key not in seen:
+                seen.add(key)
+                docs.append(doc)
+            time.sleep(0.1)
+
+    log.info("  Wikipedia Search ES: buscando artículos por categorías...")
+    for q in SEARCH_QUERIES_ES:
+        _search_and_fetch(q, "es")
+        time.sleep(0.2)
+
+    log.info("  Wikipedia Search EN: buscando artículos por categorías...")
+    for q in SEARCH_QUERIES_EN:
+        _search_and_fetch(q, "en")
+        time.sleep(0.2)
+
+    log.info(f"Wikipedia Search total: {len(docs)} artículos descubiertos")
+    return docs
+
+
 def harvest_wikipedia() -> list[dict]:
-    """Descarga artículos de Wikipedia en español e inglés."""
+    """Descarga artículos de Wikipedia (lista fija + búsqueda dinámica)."""
     docs = []
     seen = set()
-    total = len(WIKIPEDIA_ARTICLES_ES) + len(WIKIPEDIA_ARTICLES_EN)
     count = 0
 
     for title in WIKIPEDIA_ARTICLES_ES:
@@ -514,6 +584,14 @@ def harvest_wikipedia() -> list[dict]:
                 seen.add(key)
                 docs.append(doc)
         time.sleep(0.15)
+
+    # Búsqueda dinámica: artículos adicionales por categoría
+    dynamic = harvest_wikipedia_search(max_per_category=15)
+    for d in dynamic:
+        key = hashlib.md5(d["text"][:200].encode()).hexdigest()
+        if key not in seen:
+            seen.add(key)
+            docs.append(d)
 
     log.info(f"Wikipedia total: {len(docs)} artículos descargados")
     return docs
