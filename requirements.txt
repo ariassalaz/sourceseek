@@ -1,0 +1,29 @@
+# SourceSeek - Dependencias Python
+# Instalar con: pip install -r requirements.txt
+
+# Web framework
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# Machine Learning / Embeddings
+sentence-transformers>=2.7.0
+torch>=2.1.0                    # requerido por sentence-transformers
+numpy>=1.26.0
+
+# Vector Search
+faiss-cpu>=1.8.0                # usar faiss-gpu si tienes GPU CUDA
+
+# Web Semántica / RDF / N-Quads
+rdflib>=7.0.0
+
+# HTTP
+requests>=2.31.0
+rank_bm25>=0.2.2
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+
+# Utilidades
+tqdm>=4.66.0                    # barras de progreso
+
+# Opcional: aceleración de tokenización
+tokenizers>=0.15.0

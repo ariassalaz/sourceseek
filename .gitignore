@@ -1,0 +1,47 @@
+# ── Datos generados (se reconstruyen con /api/rebuild) ──────────────────────
+data/*.index
+data/*.pkl
+data/*.json
+data/*.nq
+data/*.ttl
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Entornos virtuales ────────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env/
+ENV/
+
+# ── Variables de entorno ──────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.secret
+
+# ── IDEs y editores ───────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Modelos descargados (sentence-transformers / cross-encoder) ───────────────
+models/
+.cache/

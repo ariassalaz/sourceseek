@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SourceSeek · Fútbol Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;600;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:         #0a0a0f;
+    --surface:    #111118;
+    --surface2:   #1a1a24;
+    --surface3:   #20202e;
+    --border:     #2a2a38;
+    --accent:     #00e5a0;
+    --accent2:    #7c3aed;
+    --accent3:    #3b82f6;
+    --text:       #e8e8f0;
+    --text-muted: #6b6b80;
+    --red:        #ff4757;
+    --gold:       #ffd700;
+    --chunk-bg:   #0f1520;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% -10%, rgba(0,229,160,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 110%, rgba(124,58,237,0.08) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ══ HEADER ══ */
+  header {
+    position: relative; z-index: 10;
+    padding: 1.5rem 2rem 0;
+    display: flex; align-items: flex-start;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo { display: flex; align-items: baseline; gap: 0.5rem; }
+  .logo-text {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 800; font-size: 2.2rem;
+    letter-spacing: -0.02em; color: var(--text); line-height: 1;
+  }
+  .logo-text span { color: var(--accent); }
+  .logo-sub {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 300; font-size: 0.8rem;
+    color: var(--text-muted); letter-spacing: 0.12em;
+    text-transform: uppercase; padding-bottom: 0.3rem;
+  }
+  .header-nav { display: flex; align-items: center; gap: 1rem; padding-bottom: 1rem; }
+  .status-badge {
+    display: flex; align-items: center; gap: 0.4rem;
+    font-size: 0.7rem; font-family: 'JetBrains Mono', monospace;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); animation: pulse 2s infinite; }
+  .status-dot.online  { background: var(--accent); }
+  .status-dot.offline { background: var(--red); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .tag { font-size: 0.62rem; font-family: 'JetBrains Mono', monospace; padding: 0.18rem 0.45rem; border-radius: 3px; border: 1px solid; letter-spacing: 0.06em; text-transform: uppercase; }
+  .tag-rdf   { color: #a78bfa; border-color: #a78bfa44; background: #a78bfa0d; }
+  .tag-rag   { color: var(--accent); border-color: #00e5a044; background: #00e5a00d; }
+  .tag-faiss { color: #60a5fa; border-color: #60a5fa44; background: #60a5fa0d; }
+  .tag-bm25  { color: #f59e0b; border-color: #f59e0b44; background: #f59e0b0d; }
+  .tag-cc    { color: #f472b6; border-color: #f472b644; background: #f472b60d; }
+
+  .sys-btn {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--text-muted); font-size: 0.7rem;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 0.28rem 0.65rem; border-radius: 4px; cursor: pointer;
+    letter-spacing: 0.06em; transition: all 0.15s;
+  }
+  .sys-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ══ HERO ══ */
+  .hero {
+    position: relative; z-index: 10;
+    padding: 3rem 2rem 2rem;
+    max-width: 900px; margin: 0 auto; text-align: center;
+  }
+  .hero-eyebrow {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.7rem;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 1rem;
+  }
+  h1 {
+    font-family: 'Barlow Condensed', sans-serif; font-weight: 800;
+    font-size: clamp(2.6rem, 6vw, 4.5rem);
+    line-height: 0.95; letter-spacing: -0.02em; margin-bottom: 1rem;
+  }
+  h1 em { font-style: normal; color: transparent; -webkit-text-stroke: 1px var(--accent); }
+  .hero-sub {
+    font-size: 0.95rem; color: var(--text-muted); font-weight: 300;
+    max-width: 480px; margin: 0 auto 2rem; line-height: 1.6;
+  }
+
+  /* ══ SEARCH ══ */
+  .search-container { position: relative; max-width: 680px; margin: 0 auto; }
+  .search-wrapper {
+    position: relative; display: flex; align-items: stretch;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .search-wrapper:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,229,160,0.08), 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .search-icon { display: flex; align-items: center; padding: 0 1rem; color: var(--text-muted); font-size: 1.1rem; flex-shrink: 0; }
+  #searchInput {
+    flex: 1; background: transparent; border: none; outline: none;
+    color: var(--text); font-family: 'DM Sans', sans-serif;
+    font-size: 1rem; font-weight: 400; padding: 1rem 0;
+    caret-color: var(--accent);
+  }
+  #searchInput::placeholder { color: var(--text-muted); }
+  .search-btn {
+    background: var(--accent); border: none; color: #000;
+    font-family: 'Barlow Condensed', sans-serif; font-weight: 600;
+    font-size: 0.92rem; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 0 1.6rem; cursor: pointer; transition: background 0.15s, transform 0.1s; flex-shrink: 0;
+  }
+  .search-btn:hover  { background: #00ffb3; }
+  .search-btn:active { transform: scale(0.98); }
+  .search-btn:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
+
+  /* Autocomplete dropdown */
+  .autocomplete-dropdown {
+    position: absolute; top: 100%; left: 0; right: 0;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-top: none; border-radius: 0 0 6px 6px;
+    z-index: 100; display: none;
+  }
+  .autocomplete-item {
+    padding: 0.6rem 1rem; cursor: pointer;
+    display: flex; align-items: center; gap: 0.6rem;
+    font-size: 0.88rem; transition: background 0.1s;
+    border-bottom: 1px solid var(--border);
+  }
+  .autocomplete-item:last-child { border-bottom: none; }
+  .autocomplete-item:hover { background: var(--surface3); }
+  .autocomplete-type {
+    font-size: 0.6rem; font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase; padding: 0.1rem 0.4rem;
+    border-radius: 2px; flex-shrink: 0;
+  }
+
+  /* Suggestions chips */
+  .suggestions { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center; margin-top: 0.9rem; }
+  .suggestion-chip {
+    font-size: 0.76rem; padding: 0.28rem 0.7rem; border-radius: 20px;
+    border: 1px solid var(--border); color: var(--text-muted);
+    cursor: pointer; background: transparent; transition: all 0.15s;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .suggestion-chip:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,0.05); }
+
+  /* Type filter row */
+  .filter-row {
+    display: flex; flex-wrap: wrap; gap: 0.4rem;
+    justify-content: center; margin-top: 0.8rem;
+  }
+  .filter-chip {
+    font-size: 0.7rem; padding: 0.22rem 0.65rem; border-radius: 20px;
+    border: 1px solid var(--border); color: var(--text-muted);
+    cursor: pointer; background: transparent; transition: all 0.15s;
+    font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .filter-chip.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,0.08); }
+  .filter-chip:hover:not(.active) { border-color: #444; color: var(--text); }
+
+  /* ══ MAIN ══ */
+  main { position: relative; z-index: 10; max-width: 1140px; margin: 0 auto; padding: 2rem; }
+
+  #loading { display: none; text-align: center; padding: 3rem 0; }
+  .loader { display: inline-block; width: 38px; height: 38px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-label { display: block; margin-top: 0.9rem; font-size: 0.78rem; font-family: 'JetBrains Mono', monospace; color: var(--text-muted); letter-spacing: 0.1em; animation: blink 1.2s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0.3; } }
+
+  #results { display: none; }
+
+  /* Results header */
+  .results-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1.25rem; padding-bottom: 0.9rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .results-query { font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 1.3rem; color: var(--text-muted); }
+  .results-query span { color: var(--text); }
+  .results-meta { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+  .meta-pill {
+    font-size: 0.68rem; font-family: 'JetBrains Mono', monospace;
+    color: var(--text-muted); padding: 0.18rem 0.55rem;
+    border: 1px solid var(--border); border-radius: 3px; letter-spacing: 0.06em;
+  }
+  .meta-pill.llm    { color: var(--accent); border-color: rgba(0,229,160,0.3); }
+  .meta-pill.time   { color: #f59e0b; border-color: rgba(245,158,11,0.3); }
+  .meta-pill.hybrid { color: #a78bfa; border-color: rgba(167,139,250,0.3); }
+
+  /* Grid layout */
+  .results-grid { display: grid; grid-template-columns: 1fr 360px; gap: 1.5rem; align-items: start; }
+  @media (max-width: 900px) { .results-grid { grid-template-columns: 1fr; } }
+
+  /* Answer card */
+  .answer-card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .answer-card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 0.5rem; padding: 0.7rem 1.2rem;
+    background: var(--surface2); border-bottom: 1px solid var(--border);
+  }
+  .answer-card-header-left { display: flex; align-items: center; gap: 0.5rem; }
+  .answer-card-header-icon { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .answer-card-title { font-size: 0.7rem; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); }
+  .copy-btn {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--text-muted); font-size: 0.68rem;
+    font-family: 'JetBrains Mono', monospace; padding: 0.22rem 0.55rem;
+    border-radius: 3px; cursor: pointer; transition: all 0.15s;
+    letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .answer-body { padding: 1.4rem; font-size: 0.95rem; line-height: 1.78; color: var(--text); white-space: pre-wrap; }
+
+  /* Sources */
+  .sources-section { margin-top: 0.5rem; padding: 0.9rem 1.4rem; border-top: 1px solid var(--border); }
+  .sources-label { font-size: 0.66rem; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.5rem; }
+  .source-item { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; }
+  .source-badge {
+    font-size: 0.58rem; font-family: 'JetBrains Mono', monospace;
+    padding: 0.1rem 0.35rem; border-radius: 2px;
+    text-transform: uppercase; letter-spacing: 0.04em; flex-shrink: 0;
+  }
+  .badge-dbpedia   { background: #1e3a5f; color: #60a5fa; }
+  .badge-wikipedia { background: #1e3a1e; color: #4ade80; }
+  .badge-wikidata  { background: #2a1e3a; color: #c084fc; }
+  .badge-cc        { background: #3a1e2a; color: #f472b6; }
+  .badge-fallback  { background: #2a2a1e; color: #fbbf24; }
+  .source-link { font-size: 0.76rem; color: #60a5fa; text-decoration: none; font-family: 'JetBrains Mono', monospace; transition: color 0.15s; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .source-link:hover { color: var(--accent); }
+
+  /* Chunks panel */
+  .chunks-panel { display: flex; flex-direction: column; gap: 0.65rem; }
+  .chunks-panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.2rem; }
+  .chunks-panel-title { font-size: 0.7rem; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); }
+  .chunk-card { background: var(--chunk-bg); border: 1px solid var(--border); border-radius: 5px; padding: 0.9rem; cursor: pointer; transition: border-color 0.15s, transform 0.1s; }
+  .chunk-card:hover { border-color: rgba(0,229,160,0.35); transform: translateX(2px); }
+  .chunk-card.expanded { border-color: rgba(0,229,160,0.5); }
+  .chunk-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem; }
+  .chunk-header-left { display: flex; align-items: center; gap: 0.4rem; }
+  .chunk-type { font-size: 0.62rem; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 0.08em; padding: 0.13rem 0.38rem; border-radius: 2px; }
+  .chunk-type.player       { background: #1a2a3a; color: #60a5fa; }
+  .chunk-type.club         { background: #1a2a1a; color: #4ade80; }
+  .chunk-type.competition  { background: #2a1a1a; color: #f87171; }
+  .chunk-type.rule         { background: #2a2a1a; color: #fbbf24; }
+  .chunk-type.concept      { background: #1a1a2a; color: #a78bfa; }
+  .chunk-type.tactic       { background: #1a2a2a; color: #2dd4bf; }
+  .chunk-type.technology   { background: #241a2a; color: #e879f9; }
+  .chunk-type.manager      { background: #1a2a3a; color: #93c5fd; }
+  .chunk-type.national_team { background: #2a1a2a; color: #f0abfc; }
+  .chunk-type.stadium      { background: #1a1a1a; color: #9ca3af; }
+  .chunk-type.wikipedia    { background: #1a2a1a; color: #6ee7b7; }
+  .chunk-type.common_crawl { background: #2a1e2a; color: #f472b6; }
+  .chunk-source { font-size: 0.58rem; font-family: 'JetBrains Mono', monospace; color: var(--text-muted); padding: 0.1rem 0.3rem; border-radius: 2px; border: 1px solid var(--border); }
+  .chunk-scores { display: flex; flex-direction: column; align-items: flex-end; gap: 0.1rem; }
+  .chunk-score-main { font-size: 0.7rem; font-family: 'JetBrains Mono', monospace; color: var(--accent); }
+  .chunk-score-sub  { font-size: 0.58rem; font-family: 'JetBrains Mono', monospace; color: var(--text-muted); }
+  .chunk-text { font-size: 0.81rem; color: #b0b0c0; line-height: 1.55; }
+  .chunk-text.clamped { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .chunk-expand-btn { margin-top: 0.35rem; font-size: 0.62rem; font-family: 'JetBrains Mono', monospace; color: var(--text-muted); cursor: pointer; text-transform: uppercase; letter-spacing: 0.08em; }
+  .chunk-expand-btn:hover { color: var(--accent); }
+  .chunk-url { margin-top: 0.4rem; font-size: 0.65rem; font-family: 'JetBrains Mono', monospace; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .score-bar-wrap { margin-top: 0.45rem; height: 2px; background: var(--border); border-radius: 1px; overflow: hidden; }
+  .score-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent2), var(--accent)); border-radius: 1px; transition: width 0.4s ease; }
+
+  /* Stats bar */
+  #statsBar {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 5px; padding: 0.55rem 1.2rem; margin-bottom: 1.25rem;
+    display: none; align-items: center; gap: 2rem; flex-wrap: wrap;
+  }
+  .stat-item { display: flex; flex-direction: column; gap: 0.08rem; }
+  .stat-label { font-size: 0.6rem; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); }
+  .stat-value { font-size: 0.95rem; font-family: 'Barlow Condensed', sans-serif; font-weight: 600; color: var(--text); }
+
+  /* Source distribution bar */
+  .source-dist { display: flex; gap: 1rem; align-items: center; padding: 0 1.2rem; }
+  .source-dist-item { display: flex; align-items: center; gap: 0.35rem; font-size: 0.62rem; font-family: 'JetBrains Mono', monospace; color: var(--text-muted); }
+  .source-dot { width: 5px; height: 5px; border-radius: 50%; }
+
+  /* Error / Empty */
+  .error-banner { background: rgba(255,71,87,0.1); border: 1px solid rgba(255,71,87,0.3); border-radius: 5px; padding: 0.9rem 1.4rem; color: var(--red); font-size: 0.9rem; margin-bottom: 1.25rem; }
+  .empty-state { text-align: center; padding: 4rem 2rem; color: var(--text-muted); }
+  .empty-state h2 { font-family: 'Barlow Condensed', sans-serif; font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--text); }
+
+  /* Footer */
+  footer { position: relative; z-index: 10; padding: 1.2rem 2rem; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.8rem; margin-top: 3rem; }
+  .footer-text { font-size: 0.72rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+  .footer-tags { display: flex; gap: 0.45rem; flex-wrap: wrap; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+  /* Animations */
+  .fade-in { animation: fadeIn 0.35s ease forwards; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* System info panel */
+  .sys-panel { display: none; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 1.2rem; margin: 1rem 0; font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--text-muted); }
+  .sys-panel.open { display: block; }
+  .sys-panel pre { white-space: pre-wrap; word-break: break-all; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-text">Source<span>Seek</span></div>
+    <div class="logo-sub">&#x26BD; Fútbol Intelligence</div>
+  </div>
+  <nav class="header-nav">
+    <div class="status-badge">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Cargando...</span>
+    </div>
+    <button class="sys-btn" onclick="toggleSysPanel()">sys</button>
+  </nav>
+</header>
+
+<section class="hero">
+  <h1>Busca <em>cualquier</em> cosa<br>sobre fútbol</h1>
+
+  <div class="search-container">
+    <div class="search-wrapper">
+      <div class="search-icon">&#x26BD;</div>
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="¿Quién es Mbappe? ¿Qué es el fuera de juego? ¿Cuántas Champions tiene el Real Madrid?"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button class="search-btn" id="searchBtn" onclick="doSearch()">Buscar</button>
+    </div>
+    <div class="autocomplete-dropdown" id="autocomplete"></div>
+
+    <div class="filter-row" id="filterRow">
+      <button class="filter-chip active" data-filter="" onclick="setFilter(this, '')">Todos</button>
+      <button class="filter-chip" data-filter="player" onclick="setFilter(this, 'player')">&#x26BD; Jugadores</button>
+      <button class="filter-chip" data-filter="club" onclick="setFilter(this, 'club')">&#x1F3DF; Clubes</button>
+      <button class="filter-chip" data-filter="competition" onclick="setFilter(this, 'competition')">&#x1F3C6; Competiciones</button>
+      <button class="filter-chip" data-filter="manager" onclick="setFilter(this, 'manager')">&#x1F3AF; Entrenadores</button>
+      <button class="filter-chip" data-filter="rule" onclick="setFilter(this, 'rule')">&#x1F4CB; Reglas</button>
+      <button class="filter-chip" data-filter="tactic" onclick="setFilter(this, 'tactic')">&#x1F4D0; Tácticas</button>
+    </div>
+
+    <div class="suggestions">
+      <button class="suggestion-chip" onclick="setQuery('¿Quién es Lionel Messi?')">Lionel Messi</button>
+      <button class="suggestion-chip" onclick="setQuery('¿Qué es el VAR en fútbol?')">VAR</button>
+      <button class="suggestion-chip" onclick="setQuery('Champions League historia')">Champions League</button>
+      <button class="suggestion-chip" onclick="setQuery('¿Qué es el offside?')">Fuera de juego</button>
+      <button class="suggestion-chip" onclick="setQuery('Tiki-taka Barcelona Guardiola')">Tiki-taka</button>
+      <button class="suggestion-chip" onclick="setQuery('Erling Haaland goles Manchester City')">Haaland</button>
+      <button class="suggestion-chip" onclick="setQuery('Copa del Mundo 2022 Qatar Argentina')">Mundial Qatar 2022</button>
+      <button class="suggestion-chip" onclick="setQuery('Kylian Mbappé Real Madrid')">Mbappé</button>
+    </div>
+  </div>
+</section>
+
+<main>
+  <!-- System panel -->
+  <div class="sys-panel" id="sysPanel">
+    <pre id="sysPanelContent">Cargando información del sistema...</pre>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading">
+    <span class="loader"></span>
+    <span class="loading-label" id="loadingLabel">recuperando información...</span>
+  </div>
+
+  <!-- Error -->
+  <div id="errorBanner" class="error-banner" style="display:none"></div>
+
+  <!-- Stats bar -->
+  <div id="statsBar" style="display:none">
+    <div class="stat-item">
+      <span class="stat-label">Chunks</span>
+      <span class="stat-value" id="statChunks">—</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Top score</span>
+      <span class="stat-value" id="statScore">—</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Fuentes únicas</span>
+      <span class="stat-value" id="statSources">—</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Modo</span>
+      <span class="stat-value" id="statLLM">—</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Tiempo</span>
+      <span class="stat-value" id="statTime">—</span>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results">
+    <div class="results-header">
+      <div class="results-query">Resultados para <span id="resultsQueryLabel"></span></div>
+      <div class="results-meta">
+        <span class="meta-pill" id="metaChunks"></span>
+        <span class="meta-pill hybrid">BM25 + Vector</span>
+        <span class="meta-pill time" id="metaTime" style="display:none"></span>
+        <span class="meta-pill llm" id="metaLLM" style="display:none">LLM</span>
+      </div>
+    </div>
+
+    <div class="results-grid">
+      <!-- Respuesta principal -->
+      <div>
+        <div class="answer-card fade-in">
+          <div class="answer-card-header">
+            <div class="answer-card-header-left">
+              <div class="answer-card-header-icon"></div>
+              <span class="answer-card-title">Respuesta · RAG Semántico</span>
+            </div>
+            <button class="copy-btn" onclick="copyAnswer()">Copiar</button>
+          </div>
+          <div class="answer-body" id="answerBody"></div>
+          <div class="sources-section" id="sourcesSection" style="display:none">
+            <div class="sources-label">Fuentes recuperadas</div>
+            <div id="sourcesList"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chunks de evidencia -->
+      <div>
+        <div class="chunks-panel-header">
+          <div class="chunks-panel-title">Evidencia · fragmentos top-k</div>
+        </div>
+        <div class="chunks-panel" id="chunksPanel"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+
+
+<script>
+  const API = '';
+  let currentFilter = '';
+  let autocompleteTimer = null;
+
+  // ── Filtro de tipo ─────────────────────────────────────────────────────
+  function setFilter(btn, filter) {
+    currentFilter = filter;
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  // ── Utilidades ─────────────────────────────────────────────────────────
+  function setQuery(q) {
+    document.getElementById('searchInput').value = q;
+    hideAutocomplete();
+    doSearch();
+  }
+
+  function showLoading(show) {
+    document.getElementById('loading').style.display = show ? 'block' : 'none';
+    document.getElementById('searchBtn').disabled = show;
+  }
+
+  function showResults(show) {
+    document.getElementById('results').style.display = show ? 'block' : 'none';
+    document.getElementById('statsBar').style.display = show ? 'flex' : 'none';
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('errorBanner');
+    el.textContent = msg;
+    el.style.display = msg ? 'block' : 'none';
+  }
+
+  function copyAnswer() {
+    const text = document.getElementById('answerBody').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.querySelector('.copy-btn');
+      const orig = btn.textContent;
+      btn.textContent = 'Copiado!';
+      setTimeout(() => btn.textContent = orig, 1500);
+    });
+  }
+
+  // ── Sistema de estado ──────────────────────────────────────────────────
+  async function loadStatus() {
+    try {
+      const r = await fetch(API + '/api/status');
+      const d = await r.json();
+      const dot = document.getElementById('statusDot');
+      const txt = document.getElementById('statusText');
+      if (d.status === 'ready') {
+        dot.className = 'status-dot online';
+        txt.textContent = `${d.index_size} vecs · ${d.chunk_count} chunks`;
+      } else {
+        dot.className = 'status-dot offline';
+        txt.textContent = 'indexando...';
+      }
+      document.getElementById('sysPanelContent').textContent = JSON.stringify(d, null, 2);
+    } catch(e) {
+      document.getElementById('statusDot').className = 'status-dot offline';
+      document.getElementById('statusText').textContent = 'offline';
+    }
+  }
+
+  function toggleSysPanel() {
+    const p = document.getElementById('sysPanel');
+    p.classList.toggle('open');
+    if (p.classList.contains('open')) loadStatus();
+  }
+
+  // ── Autocomplete ───────────────────────────────────────────────────────
+  const input = document.getElementById('searchInput');
+  input.addEventListener('input', () => {
+    clearTimeout(autocompleteTimer);
+    const q = input.value.trim();
+    if (q.length < 2) { hideAutocomplete(); return; }
+    autocompleteTimer = setTimeout(() => fetchSuggestions(q), 300);
+  });
+
+  async function fetchSuggestions(q) {
+    try {
+      const r = await fetch(`${API}/api/suggest?q=${encodeURIComponent(q)}`);
+      const d = await r.json();
+      renderAutocomplete(d.suggestions || []);
+    } catch(e) { hideAutocomplete(); }
+  }
+
+  function renderAutocomplete(items) {
+    const dropdown = document.getElementById('autocomplete');
+    if (!items.length) { hideAutocomplete(); return; }
+    const typeColors = {
+      player: '#60a5fa', club: '#4ade80', competition: '#f87171',
+      manager: '#93c5fd', rule: '#fbbf24', tactic: '#2dd4bf',
+    };
+    dropdown.innerHTML = items.slice(0, 6).map(s => `
+      <div class="autocomplete-item" onclick="setQuery('${escapeHtml(s.label)}')">
+        <span class="autocomplete-type" style="background:${typeColors[s.type]||'#555'}22;color:${typeColors[s.type]||'#aaa'}">${s.type||'?'}</span>
+        <span>${escapeHtml(s.label)}</span>
+      </div>
+    `).join('');
+    dropdown.style.display = 'block';
+  }
+
+  function hideAutocomplete() {
+    document.getElementById('autocomplete').style.display = 'none';
+  }
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.search-container')) hideAutocomplete();
+  });
+
+  // ── Búsqueda principal ─────────────────────────────────────────────────
+  async function doSearch() {
+    const query = document.getElementById('searchInput').value.trim();
+    if (!query) return;
+    hideAutocomplete();
+    showError('');
+    showResults(false);
+    showLoading(true);
+
+    const labels = [
+      'codificando consulta...',
+      'buscando BM25...',
+      'recuperando vectores FAISS...',
+      'combinando scores híbridos...',
+      'generando respuesta RAG...',
+    ];
+    let li = 0;
+    const labelEl = document.getElementById('loadingLabel');
+    const labelInterval = setInterval(() => {
+      labelEl.textContent = labels[li++ % labels.length];
+    }, 600);
+
+    try {
+      const res = await fetch(API + '/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, top_k: 7, type_filter: currentFilter || null }),
+      });
+      const data = await res.json();
+      clearInterval(labelInterval);
+      showLoading(false);
+
+      if (!res.ok || data.error) {
+        showError('Error: ' + (data.error || 'respuesta inválida del servidor'));
+        return;
+      }
+      renderResults(data);
+    } catch(e) {
+      clearInterval(labelInterval);
+      showLoading(false);
+      showError('No se pudo conectar con el servidor. ¿Está corriendo app.py?');
+    }
+  }
+
+  // ── Renderizado ─────────────────────────────────────────────────────────
+  function renderResults(data) {
+    document.getElementById('resultsQueryLabel').textContent = `"${data.query}"`;
+    document.getElementById('metaChunks').textContent = `${data.chunks.length} chunks`;
+
+    const llmEl  = document.getElementById('metaLLM');
+    llmEl.style.display = data.used_llm ? 'inline' : 'none';
+
+    if (data.search_ms) {
+      const timeEl = document.getElementById('metaTime');
+      timeEl.textContent = `${data.search_ms}ms`;
+      timeEl.style.display = 'inline';
+    }
+
+    // Stats bar
+    document.getElementById('statChunks').textContent = data.stats?.total_chunks ?? data.chunks.length;
+    document.getElementById('statScore').textContent  = (data.stats?.top_score ?? 0).toFixed(3);
+    document.getElementById('statSources').textContent = data.sources.length;
+    document.getElementById('statLLM').textContent    = data.used_llm ? 'LLM+RAG' : 'Directo';
+    document.getElementById('statTime').textContent   = data.search_ms ? `${data.search_ms}ms` : '—';
+
+    // Respuesta
+    document.getElementById('answerBody').textContent = data.answer;
+
+    // Fuentes con badges
+    const sourcesList    = document.getElementById('sourcesList');
+    const sourcesSection = document.getElementById('sourcesSection');
+    sourcesList.innerHTML = '';
+    if (data.sources && data.sources.length > 0) {
+      sourcesSection.style.display = 'block';
+      data.sources.forEach(src => {
+        const badge = getSourceBadge(src);
+        const div = document.createElement('div');
+        div.className = 'source-item';
+        div.innerHTML = `
+          <span class="source-badge ${badge.cls}">${badge.label}</span>
+          <a class="source-link" href="${src}" target="_blank" rel="noopener">${src.replace(/^https?:\/\//, '').slice(0, 65)}</a>
+        `;
+        sourcesList.appendChild(div);
+      });
+    } else {
+      sourcesSection.style.display = 'none';
+    }
+
+    // Chunks de evidencia
+    const panel = document.getElementById('chunksPanel');
+    panel.innerHTML = '';
+    data.chunks.forEach((chunk, i) => {
+      const pct      = Math.round(chunk.score * 100);
+      const typeClass = chunk.type || 'concept';
+      const srcLabel  = sourceLabel(chunk.source);
+      const card      = document.createElement('div');
+      card.className  = 'chunk-card fade-in';
+      card.style.animationDelay = `${i * 0.06}s`;
+      card.setAttribute('data-expanded', 'false');
+
+      const shortText = chunk.text.length > 160 ? chunk.text.slice(0, 160) + '…' : chunk.text;
+      const hasMore   = chunk.text.length > 160;
+
+      card.innerHTML = `
+        <div class="chunk-header">
+          <div class="chunk-header-left">
+            <span class="chunk-type ${typeClass}">${chunk.type || 'doc'}</span>
+            <span class="chunk-source">${srcLabel}</span>
+          </div>
+          <div class="chunk-scores">
+            <span class="chunk-score-main">${chunk.score.toFixed(3)}</span>
+            <span class="chunk-score-sub">v:${(chunk.vector_score||0).toFixed(2)} b:${(chunk.bm25_score||0).toFixed(2)}</span>
+          </div>
+        </div>
+        <div class="chunk-text clamped" id="ct-${i}">${escapeHtml(shortText)}</div>
+        ${hasMore ? `<div class="chunk-expand-btn" onclick="toggleChunk(${i}, ${JSON.stringify(chunk.text).replace(/'/g,"\\'")})" id="ce-${i}">expandir &#x25BE;</div>` : ''}
+        <div class="score-bar-wrap"><div class="score-bar-fill" style="width:${pct}%"></div></div>
+        <div class="chunk-url">${chunk.url || ''}</div>
+      `;
+      panel.appendChild(card);
+    });
+
+    showResults(true);
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function toggleChunk(i, fullText) {
+    const textEl = document.getElementById(`ct-${i}`);
+    const btnEl  = document.getElementById(`ce-${i}`);
+    if (textEl.classList.contains('clamped')) {
+      textEl.classList.remove('clamped');
+      textEl.textContent = fullText;
+      btnEl.textContent = 'colapsar ▴';
+    } else {
+      textEl.classList.add('clamped');
+      textEl.textContent = fullText.slice(0, 160) + '…';
+      btnEl.textContent = 'expandir ▾';
+    }
+  }
+
+  function getSourceBadge(url) {
+    if (url.includes('dbpedia.org'))      return { cls: 'badge-dbpedia',   label: 'DBpedia' };
+    if (url.includes('wikipedia.org'))    return { cls: 'badge-wikipedia', label: 'Wikipedia' };
+    if (url.includes('wikidata.org'))     return { cls: 'badge-wikidata',  label: 'Wikidata' };
+    if (url.includes('commoncrawl.org'))  return { cls: 'badge-cc',        label: 'CommonCrawl' };
+    return { cls: 'badge-fallback', label: 'Curado' };
+  }
+
+  function sourceLabel(source) {
+    const map = {
+      dbpedia_sparql: 'DBpedia',
+      wikipedia_es:   'Wiki·ES',
+      wikipedia_en:   'Wiki·EN',
+      wikidata:       'Wikidata',
+      common_crawl:   'CommonCrawl',
+      fallback:       'Curado',
+    };
+    return map[source] || source || '?';
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Enter key ──────────────────────────────────────────────────────────
+  document.getElementById('searchInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { hideAutocomplete(); doSearch(); }
+    if (e.key === 'Escape') hideAutocomplete();
+  });
+
+  // ── Init ───────────────────────────────────────────────────────────────
+  loadStatus();
+  setInterval(loadStatus, 30000);
+</script>
+</body>
+</html>
